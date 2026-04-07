@@ -297,6 +297,10 @@ public:
   LLVM_PREFERRED_TYPE(bool)
   unsigned AppendStats : 1;
 
+  /// Show template instantiation cache statistics at end of compilation.
+  LLVM_PREFERRED_TYPE(bool)
+  unsigned ShowTemplateInstantiationCacheStats : 1;
+
   /// print the supported cpus for the current target
   LLVM_PREFERRED_TYPE(bool)
   unsigned PrintSupportedCPUs : 1;
@@ -561,7 +565,8 @@ public:
 public:
   FrontendOptions()
       : DisableFree(false), RelocatablePCH(false), ShowHelp(false),
-        ShowStats(false), AppendStats(false), ShowVersion(false),
+        ShowStats(false), AppendStats(false),
+        ShowTemplateInstantiationCacheStats(false), ShowVersion(false),
         FixWhatYouCan(false), FixOnlyWarnings(false), FixAndRecompile(false),
         FixToTemporaries(false), SkipFunctionBodies(false),
         UseGlobalModuleIndex(true), GenerateGlobalModuleIndex(true),

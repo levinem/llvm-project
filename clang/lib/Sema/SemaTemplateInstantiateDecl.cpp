@@ -5601,6 +5601,15 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
   if (auto *Cache = getTemplateInstantiationCache()) {
     if (Cache->tryLoadFunctionSpecialization(*this, Function)) {
       // Cache hit — function body populated from cache.
+      if (llvm::isTimeTraceVerbose()) {
+        llvm::timeTraceAddInstantEvent("TemplateInstantiationCacheHit", [&] {
+          std::string Name;
+          llvm::raw_string_ostream OS(Name);
+          Function->getNameForDiagnostic(OS, getPrintingPolicy(),
+                                         /*Qualified=*/true);
+          return Name;
+        });
+      }
       Function->setInstantiationIsPending(false);
       return;
     }

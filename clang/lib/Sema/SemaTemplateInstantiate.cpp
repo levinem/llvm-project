@@ -4086,6 +4086,15 @@ bool Sema::InstantiateClassTemplateSpecialization(
   if (auto *Cache = getTemplateInstantiationCache()) {
     if (Cache->tryLoadClassSpecialization(*this, ClassTemplateSpec)) {
       // Cache hit — specialization is now populated from cache.
+      if (llvm::isTimeTraceVerbose()) {
+        llvm::timeTraceAddInstantEvent("TemplateInstantiationCacheHit", [&] {
+          std::string Name;
+          llvm::raw_string_ostream OS(Name);
+          ClassTemplateSpec->getNameForDiagnostic(OS, getPrintingPolicy(),
+                                                  /*Qualified=*/true);
+          return Name;
+        });
+      }
       ClassTemplateSpec->setTemplateSpecializationKind(TSK);
       ClassTemplateSpec->setPointOfInstantiation(PointOfInstantiation);
       return false;
