@@ -34,6 +34,7 @@
 #include "clang/Sema/Template.h"
 #include "clang/Sema/TemplateDeduction.h"
 #include "clang/Sema/TemplateInstCallback.h"
+#include "clang/Serialization/TemplateInstantiationCache.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -4081,6 +4082,16 @@ bool Sema::InstantiateClassTemplateSpecialization(
       ShouldDiagnoseAvailabilityOfDecl(ClassTemplateSpec, nullptr, nullptr)
           .first != AR_Available;
 
+  // Try the cross-TU template instantiation cache before instantiating.
+  if (auto *Cache = getTemplateInstantiationCache()) {
+    if (Cache->tryLoadClassSpecialization(*this, ClassTemplateSpec)) {
+      // Cache hit — specialization is now populated from cache.
+      ClassTemplateSpec->setTemplateSpecializationKind(TSK);
+      ClassTemplateSpec->setPointOfInstantiation(PointOfInstantiation);
+      return false;
+    }
+  }
+
   ActionResult<CXXRecordDecl *> Pattern =
       getPatternForClassTemplateSpecialization(*this, PointOfInstantiation,
                                                ClassTemplateSpec, TSK,
@@ -4092,6 +4103,12 @@ bool Sema::InstantiateClassTemplateSpecialization(
   bool Err = InstantiateClassImpl(
       PointOfInstantiation, ClassTemplateSpec, Pattern.get(),
       getTemplateInstantiationArgs(ClassTemplateSpec), TSK, Complain);
+
+  // Store successfully instantiated specialization in the cache.
+  if (!Err) {
+    if (auto *Cache = getTemplateInstantiationCache())
+      Cache->storeClassSpecialization(*this, ClassTemplateSpec);
+  }
 
   // If we haven't already warn on avaibility, consider the avaibility
   // attributes of the partial specialization.

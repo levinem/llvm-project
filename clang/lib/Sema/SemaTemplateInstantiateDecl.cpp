@@ -33,6 +33,7 @@
 #include "clang/Sema/SemaSwift.h"
 #include "clang/Sema/Template.h"
 #include "clang/Sema/TemplateInstCallback.h"
+#include "clang/Serialization/TemplateInstantiationCache.h"
 #include "llvm/Support/TimeProfiler.h"
 #include <optional>
 
@@ -5596,6 +5597,15 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
       PatternDef = nullptr;
   }
 
+  // Try the cross-TU template instantiation cache before instantiating.
+  if (auto *Cache = getTemplateInstantiationCache()) {
+    if (Cache->tryLoadFunctionSpecialization(*this, Function)) {
+      // Cache hit — function body populated from cache.
+      Function->setInstantiationIsPending(false);
+      return;
+    }
+  }
+
   // True is the template definition is unreachable, otherwise false.
   bool Unreachable = false;
   // FIXME: We need to track the instantiation stack in order to know which
@@ -5976,6 +5986,12 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
       Listener->FunctionDefinitionInstantiated(Function);
 
     savedContext.pop();
+  }
+
+  // Store successfully instantiated function in the cache.
+  if (Function->hasBody() && !Function->isInvalidDecl()) {
+    if (auto *Cache = getTemplateInstantiationCache())
+      Cache->storeFunctionSpecialization(*this, Function);
   }
 
   // We never need to emit the code for a lambda in unevaluated context.

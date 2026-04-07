@@ -187,6 +187,7 @@ class SemaX86;
 class StandardConversionSequence;
 class TemplateArgument;
 class TemplateArgumentLoc;
+class TemplateInstantiationCache;
 class TemplateInstantiationCallback;
 class TemplatePartialOrderingContext;
 class TemplateSpecCandidateSet;
@@ -955,6 +956,11 @@ public:
   /// Print out statistics about the semantic analysis.
   void PrintStats() const;
 
+  /// Get the template instantiation cache, or nullptr if disabled.
+  TemplateInstantiationCache *getTemplateInstantiationCache() {
+    return TemplateCache.get();
+  }
+
   /// Run some code with "sufficient" stack space. (Currently, at least 256K is
   /// guaranteed). Produces a warning if we're low on stack space and allocates
   /// more in that case. Use this in code that may recurse deeply (for example,
@@ -1582,6 +1588,10 @@ public:
 
   /// Source of additional semantic information.
   IntrusiveRefCntPtr<ExternalSemaSource> ExternalSource;
+
+  /// Cross-TU template instantiation cache, if enabled via
+  /// -ftemplate-instantiation-cache=<path>.
+  std::unique_ptr<TemplateInstantiationCache> TemplateCache;
 
 protected:
   friend class Parser;

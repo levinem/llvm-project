@@ -25,6 +25,7 @@
 #include "clang/AST/TypeOrdering.h"
 #include "clang/Basic/DarwinSDKInfo.h"
 #include "clang/Basic/DiagnosticOptions.h"
+#include "clang/Basic/Version.h"
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
@@ -71,10 +72,12 @@
 #include "clang/Sema/TemplateDeduction.h"
 #include "clang/Sema/TemplateInstCallback.h"
 #include "clang/Sema/TypoCorrection.h"
+#include "clang/Serialization/TemplateInstantiationCache.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Support/MD5.h"
 #include "llvm/Support/TimeProfiler.h"
 #include <optional>
 
@@ -338,6 +341,34 @@ Sema::Sema(Preprocessor &pp, ASTContext &ctxt, ASTConsumer &consumer,
   if (getLangOpts().CPlusPlus)
     FieldCollector.reset(new CXXFieldCollector());
 
+  // Initialize template instantiation cache if path specified.
+  const auto &HSOpts = PP.getHeaderSearchInfo().getHeaderSearchOpts();
+  if (!HSOpts.TemplateInstantiationCachePath.empty()) {
+    // Compute context hash for cache directory naming.
+    // We use a simple hash of the key compilation parameters to create
+    // a unique subdirectory that auto-invalidates when config changes.
+    llvm::MD5 CtxHash;
+    CtxHash.update(getClangFullRepositoryVersion());
+    CtxHash.update(PP.getTargetInfo().getTriple().str());
+    CtxHash.update(std::to_string(LangOpts.CPlusPlus));
+    CtxHash.update(std::to_string(LangOpts.CPlusPlus17));
+    CtxHash.update(std::to_string(LangOpts.CPlusPlus20));
+    llvm::MD5::MD5Result CtxResult;
+    CtxHash.final(CtxResult);
+    SmallString<32> CtxHashStr;
+    llvm::MD5::stringifyResult(CtxResult, CtxHashStr);
+
+    TemplateCache = std::make_unique<TemplateInstantiationCache>(
+        HSOpts.TemplateInstantiationCachePath, CtxHashStr,
+        PP.getFileManager());
+
+    // Set up pre-populated STL cache path if available.
+    SmallString<256> STLCachePath(HSOpts.ResourceDir);
+    llvm::sys::path::append(STLCachePath, "template-cache");
+    if (llvm::sys::fs::is_directory(STLCachePath))
+      TemplateCache->setSTLCachePath(STLCachePath);
+  }
+
   // Tell diagnostics how to render things from the AST library.
   Diags.SetArgToStringFn(&FormatASTNodeDiagnosticArgument, &Context);
 
@@ -594,6 +625,12 @@ void Sema::Initialize() {
 Sema::~Sema() {
   assert(InstantiatingSpecializations.empty() &&
          "failed to clean up an InstantiatingTemplate?");
+
+  // Flush pending cache writes and print statistics.
+  if (TemplateCache) {
+    TemplateCache->flushPendingWrites();
+    TemplateCache->printStats(llvm::errs());
+  }
 
   if (VisContext) FreeVisContext();
 

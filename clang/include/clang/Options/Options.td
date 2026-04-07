@@ -3535,6 +3535,17 @@ def fmodules_cache_path : Joined<["-"], "fmodules-cache-path=">, Group<i_Group>,
   MetaVarName<"<directory>">,
   HelpText<"Specify the module cache path">,
   MarshallingInfoString<HeaderSearchOpts<"ModuleCachePath">>;
+def ftemplate_instantiation_cache : Joined<["-"], "ftemplate-instantiation-cache=">,
+  Group<i_Group>,
+  Flags<[]>, Visibility<[ClangOption, CC1Option]>,
+  MetaVarName<"<directory>">,
+  HelpText<"Enable cross-TU template instantiation cache at the specified path">,
+  MarshallingInfoString<HeaderSearchOpts<"TemplateInstantiationCachePath">>;
+def ftemplate_instantiation_cache_stats : Flag<["-"], "ftemplate-instantiation-cache-stats">,
+  Group<f_Group>,
+  Flags<[]>, Visibility<[ClangOption, CC1Option]>,
+  HelpText<"Print template instantiation cache statistics at end of compilation">,
+  MarshallingInfoFlag<FrontendOpts<"ShowTemplateInstantiationCacheStats">>;
 def fmodules_user_build_path : Separate<["-"], "fmodules-user-build-path">, Group<i_Group>,
   Flags<[]>, Visibility<[ClangOption, CC1Option]>,
   MetaVarName<"<directory>">,

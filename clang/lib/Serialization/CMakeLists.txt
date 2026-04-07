@@ -25,6 +25,7 @@ add_clang_library(clangSerialization
   PCHContainerOperations.cpp
   ObjectFilePCHContainerReader.cpp
   TemplateArgumentHasher.cpp
+  TemplateInstantiationCache.cpp
 
   ADDITIONAL_HEADERS
   ASTCommon.h
@@ -33,8 +34,10 @@ add_clang_library(clangSerialization
   LINK_LIBS
   clangAST
   clangBasic
+  clangFrontend
   clangLex
   clangSema
+  clangTooling
 
   DEPENDS
   omp_gen

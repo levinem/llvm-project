@@ -110,6 +110,9 @@ public:
   /// The directory used for the module cache.
   std::string ModuleCachePath;
 
+  /// The directory used for the cross-TU template instantiation cache.
+  std::string TemplateInstantiationCachePath;
+
   /// The directory used for a user build.
   std::string ModuleUserBuildPath;
 
