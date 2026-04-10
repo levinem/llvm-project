@@ -55,3 +55,8 @@ add_llvm_external_project(clang-tools-extra extra)
 add_clang_subdirectory(libclang)
 
 add_clang_subdirectory(offload-arch)
+
+# Template instantiation cache daemon (requires LLVM_ENABLE_HTTPLIB for HTTP server support).
+if(LLVM_ENABLE_HTTPLIB)
+  add_clang_subdirectory(clang-template-cache-daemon)
+endif()

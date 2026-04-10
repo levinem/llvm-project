@@ -5599,19 +5599,21 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
 
   // Try the cross-TU template instantiation cache before instantiating.
   if (auto *Cache = getTemplateInstantiationCache()) {
-    if (Cache->tryLoadFunctionSpecialization(*this, Function)) {
-      // Cache hit — function body populated from cache.
-      if (llvm::isTimeTraceVerbose()) {
-        llvm::timeTraceAddInstantEvent("TemplateInstantiationCacheHit", [&] {
-          std::string Name;
-          llvm::raw_string_ostream OS(Name);
-          Function->getNameForDiagnostic(OS, getPrintingPolicy(),
-                                         /*Qualified=*/true);
-          return Name;
-        });
+    if (auto *Backend = Cache->getBackend()) {
+      if (Backend->tryLoadFunc(*this, Function)) {
+        // Genuine cache hit — function body populated, skip instantiation.
+        if (llvm::isTimeTraceVerbose()) {
+          llvm::timeTraceAddInstantEvent("TemplateInstantiationCacheHit", [&] {
+            std::string Name;
+            llvm::raw_string_ostream OS(Name);
+            Function->getNameForDiagnostic(OS, getPrintingPolicy(),
+                                           /*Qualified=*/true);
+            return Name;
+          });
+        }
+        Function->setInstantiationIsPending(false);
+        return;
       }
-      Function->setInstantiationIsPending(false);
-      return;
     }
   }
 
@@ -5997,10 +5999,12 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
     savedContext.pop();
   }
 
-  // Store successfully instantiated function in the cache.
+  // Store successfully instantiated function in the cache via backend.
   if (Function->hasBody() && !Function->isInvalidDecl()) {
-    if (auto *Cache = getTemplateInstantiationCache())
-      Cache->storeFunctionSpecialization(*this, Function);
+    if (auto *Cache = getTemplateInstantiationCache()) {
+      if (auto *Backend = Cache->getBackend())
+        Backend->storeFunc(*this, Function);
+    }
   }
 
   // We never need to emit the code for a lambda in unevaluated context.

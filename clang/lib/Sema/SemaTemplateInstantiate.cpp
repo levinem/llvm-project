@@ -4083,21 +4083,25 @@ bool Sema::InstantiateClassTemplateSpecialization(
           .first != AR_Available;
 
   // Try the cross-TU template instantiation cache before instantiating.
+  // The backend (ASTImporterCacheBackend) handles the full PCM round-trip
+  // via ASTWriter/ASTReader/ASTImporter. On a hit, we skip InstantiateClassImpl.
   if (auto *Cache = getTemplateInstantiationCache()) {
-    if (Cache->tryLoadClassSpecialization(*this, ClassTemplateSpec)) {
-      // Cache hit — specialization is now populated from cache.
-      if (llvm::isTimeTraceVerbose()) {
-        llvm::timeTraceAddInstantEvent("TemplateInstantiationCacheHit", [&] {
-          std::string Name;
-          llvm::raw_string_ostream OS(Name);
-          ClassTemplateSpec->getNameForDiagnostic(OS, getPrintingPolicy(),
-                                                  /*Qualified=*/true);
-          return Name;
-        });
+    if (auto *Backend = Cache->getBackend()) {
+      if (Backend->tryLoad(*this, ClassTemplateSpec)) {
+        // Genuine cache hit — specialization is now populated, skip instantiation.
+        if (llvm::isTimeTraceVerbose()) {
+          llvm::timeTraceAddInstantEvent("TemplateInstantiationCacheHit", [&] {
+            std::string Name;
+            llvm::raw_string_ostream OS(Name);
+            ClassTemplateSpec->getNameForDiagnostic(OS, getPrintingPolicy(),
+                                                    /*Qualified=*/true);
+            return Name;
+          });
+        }
+        ClassTemplateSpec->setTemplateSpecializationKind(TSK);
+        ClassTemplateSpec->setPointOfInstantiation(PointOfInstantiation);
+        return false;
       }
-      ClassTemplateSpec->setTemplateSpecializationKind(TSK);
-      ClassTemplateSpec->setPointOfInstantiation(PointOfInstantiation);
-      return false;
     }
   }
 
@@ -4113,10 +4117,12 @@ bool Sema::InstantiateClassTemplateSpecialization(
       PointOfInstantiation, ClassTemplateSpec, Pattern.get(),
       getTemplateInstantiationArgs(ClassTemplateSpec), TSK, Complain);
 
-  // Store successfully instantiated specialization in the cache.
+  // Store successfully instantiated specialization in the cache via backend.
   if (!Err) {
-    if (auto *Cache = getTemplateInstantiationCache())
-      Cache->storeClassSpecialization(*this, ClassTemplateSpec);
+    if (auto *Cache = getTemplateInstantiationCache()) {
+      if (auto *Backend = Cache->getBackend())
+        Backend->store(*this, ClassTemplateSpec);
+    }
   }
 
   // If we haven't already warn on avaibility, consider the avaibility

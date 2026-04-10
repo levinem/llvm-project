@@ -187,7 +187,8 @@ def parse_ftime_trace(trace_path: Path) -> dict:
 
 def compile_with_trace(clang: str, source: Path, cache_dir: str,
                        trace_path: Path, std: str,
-                       extra_args: list = None) -> dict:
+                       extra_args: list = None,
+                       daemon_url: str = None) -> dict:
     """Compile source with -ftime-trace and return timing data."""
     cmd = [
         clang,
@@ -199,6 +200,8 @@ def compile_with_trace(clang: str, source: Path, cache_dir: str,
         "-ftime-trace-granularity=0",  # Capture all events
         str(source),
     ]
+    if daemon_url:
+        cmd.append(f"-ftemplate-instantiation-cache-daemon={daemon_url}")
     if extra_args:
         cmd.extend(extra_args)
 
@@ -209,9 +212,10 @@ def compile_with_trace(clang: str, source: Path, cache_dir: str,
 
     # Extract cache stats from stderr.
     stats = {"cache_hits": 0, "cache_misses": 0, "cache_writes": 0,
-             "hit_rate": 0.0}
+             "hit_rate": 0.0, "daemon_hits": 0, "daemon_share": 0.0,
+             "est_saved_ms": 0.0}
     for line in result.stderr.splitlines():
-        if "Cache hits:" in line:
+        if "Total hits:" in line:
             stats["cache_hits"] = int(line.split(":")[-1].strip())
         elif "Cache misses:" in line:
             stats["cache_misses"] = int(line.split(":")[-1].strip())
@@ -222,6 +226,23 @@ def compile_with_trace(clang: str, source: Path, cache_dir: str,
                 stats["hit_rate"] = float(
                     line.split(":")[-1].strip().rstrip("%"))
             except ValueError:
+                pass
+        elif "Daemon hits:" in line:
+            try:
+                stats["daemon_hits"] = int(line.split(":")[-1].strip())
+            except ValueError:
+                pass
+        elif "Daemon share:" in line:
+            try:
+                stats["daemon_share"] = float(
+                    line.split(":")[-1].strip().rstrip("%"))
+            except ValueError:
+                pass
+        elif "Est. time saved:" in line:
+            try:
+                val = line.split(":")[-1].strip().split("ms")[0]
+                stats["est_saved_ms"] = float(val)
+            except (ValueError, IndexError):
                 pass
 
     # Parse trace file.
@@ -254,6 +275,10 @@ def main():
                         help="Don't clean up the cache directory after running")
     parser.add_argument("--source", default=None,
                         help="Custom source file to benchmark (default: built-in)")
+    parser.add_argument("--daemon-url", default=None,
+                        help="URL of a running clang-template-cache-daemon "
+                             "(e.g., http://localhost:8123). When set, adds a "
+                             "third 'daemon warm' row to the results table.")
     args = parser.parse_args()
 
     # Validate clang.
@@ -284,9 +309,12 @@ def main():
         print(f"=" * 50)
         print(f"Clang:      {args.clang}")
         print(f"Standard:   -std={args.std}")
-        print(f"Runs:       1 cold + {args.runs} warm")
+        print(f"Runs:       1 cold + {args.runs} warm"
+              + (f" + {args.runs} daemon warm" if args.daemon_url else ""))
         print(f"Cache dir:  {cache_dir}")
         print(f"Source:     {source_path}")
+        if args.daemon_url:
+            print(f"Daemon URL: {args.daemon_url}")
         print()
 
         # Cold run (populates cache).
@@ -305,11 +333,9 @@ def main():
         print(f"  Cache hits:   {cold_stats['cache_hits']} (expected: 0)")
         print()
 
-        # Warm runs.
-        print(f"Running {args.runs} warm compilations (reads from cache)...")
+        # Warm runs (local disk only).
+        print(f"Running {args.runs} warm compilations (local disk cache)...")
         warm_times = []
-        warm_class_times = []
-        warm_func_times = []
         warm_hit_rates = []
         warm_hits = []
 
@@ -318,8 +344,6 @@ def main():
             stats = compile_with_trace(
                 args.clang, source_path, cache_dir, trace, args.std)
             warm_times.append(stats["total_instantiate_ms"])
-            warm_class_times.append(stats["instantiate_class_ms"])
-            warm_func_times.append(stats["instantiate_func_ms"])
             warm_hit_rates.append(stats["hit_rate"])
             warm_hits.append(stats["cache_hits"])
             print(f"  Run {i+1}/{args.runs}: "
@@ -327,9 +351,39 @@ def main():
                   f"(hits: {stats['cache_hits']}, "
                   f"rate: {stats['hit_rate']:.1f}%)")
 
+        # Daemon warm runs (if daemon URL provided).
+        daemon_times = []
+        daemon_hit_rates = []
+        daemon_hits_per_run = []
+        daemon_shares = []
+
+        if args.daemon_url:
+            print(f"\nRunning {args.runs} daemon warm compilations "
+                  f"(daemon: {args.daemon_url})...")
+            # Use a fresh local cache so daemon carries the full load.
+            daemon_cache = os.path.join(workdir, "daemon-cache")
+            os.makedirs(daemon_cache, exist_ok=True)
+            # Pre-populate local cache once so hashes exist on disk.
+            compile_with_trace(args.clang, source_path, daemon_cache,
+                               Path(workdir) / "daemon-cold.json", args.std)
+            for i in range(args.runs):
+                trace = Path(workdir) / f"daemon_warm_{i}.json"
+                stats = compile_with_trace(
+                    args.clang, source_path, daemon_cache, trace, args.std,
+                    daemon_url=args.daemon_url)
+                daemon_times.append(stats["total_instantiate_ms"])
+                daemon_hit_rates.append(stats["hit_rate"])
+                daemon_hits_per_run.append(stats["daemon_hits"])
+                daemon_shares.append(stats["daemon_share"])
+                print(f"  Run {i+1}/{args.runs}: "
+                      f"{format_ms(stats['total_instantiate_ms'])} "
+                      f"(hits: {stats['cache_hits']}, "
+                      f"daemon: {stats['daemon_hits']}, "
+                      f"share: {stats['daemon_share']:.1f}%)")
+
         print()
         print("Results")
-        print("-" * 50)
+        print("=" * 60)
 
         cold_total = cold_stats["total_instantiate_ms"]
         warm_mean = mean(warm_times) if warm_times else 0
@@ -341,21 +395,43 @@ def main():
         time_saved_mean = cold_total - warm_mean
         pct_saved = (time_saved_mean / cold_total * 100) if cold_total > 0 else 0
 
-        print(f"Cold (cache miss) instantiation time: "
-              f"{format_ms(cold_total)}")
-        print(f"Warm (cache hit)  instantiation time:")
-        print(f"  Mean:   {format_ms(warm_mean)}")
-        print(f"  Median: {format_ms(warm_med)}")
-        if warm_std > 0:
-            print(f"  Stddev: {format_ms(warm_std)}")
+        # Three-row table: cold / local warm / daemon warm
+        col_w = 18
+        print(f"{'Mode':<20} {'Inst. time':>{col_w}} {'Speedup':>{col_w}} "
+              f"{'Hit rate':>{col_w}} {'Time saved':>{col_w}}")
+        print("-" * (20 + col_w * 4 + 3))
+
+        def row(label, t_ms, speedup, hit_rate, saved_ms):
+            pct = f"{saved_ms/cold_total*100:.0f}%" if cold_total > 0 else "—"
+            print(f"{label:<20} {format_ms(t_ms):>{col_w}} "
+                  f"{speedup:>{col_w}.1f}x "
+                  f"{hit_rate:>{col_w}.1f}% "
+                  f"{format_ms(saved_ms) + ' (' + pct + ')':>{col_w}}")
+
+        row("Cold (miss)", cold_total, 1.0, 0.0, 0.0)
+        row("Warm local disk", warm_mean, speedup_mean,
+            mean(warm_hit_rates) if warm_hit_rates else 0, time_saved_mean)
+
+        if daemon_times:
+            d_mean = mean(daemon_times)
+            d_speedup = cold_total / d_mean if d_mean > 0 else float("inf")
+            d_saved = cold_total - d_mean
+            d_hit_rate = mean(daemon_hit_rates) if daemon_hit_rates else 0
+            row("Warm daemon", d_mean, d_speedup, d_hit_rate, d_saved)
+
+            avg_daemon_hits = mean(daemon_hits_per_run) if daemon_hits_per_run else 0
+            avg_share = mean(daemon_shares) if daemon_shares else 0
+            print()
+            print(f"Daemon details:")
+            print(f"  Avg daemon hits/run: {avg_daemon_hits:.0f}")
+            print(f"  Avg daemon share:    {avg_share:.1f}% of hits from daemon")
+            marginal_ms = warm_mean - d_mean
+            if marginal_ms > 0:
+                print(f"  Marginal speedup vs local disk: "
+                      f"{format_ms(marginal_ms)} faster per compilation")
+
         print()
-        print(f"Speedup (mean):   {speedup_mean:.1f}x")
-        print(f"Speedup (median): {speedup_med:.1f}x")
-        print(f"Time saved (mean): {format_ms(time_saved_mean)} "
-              f"({pct_saved:.0f}%)")
-        print()
-        print(f"Cache hit rate (warm runs): "
-              f"{mean(warm_hit_rates):.1f}% avg, "
+        print(f"Local disk hit rate:  {mean(warm_hit_rates):.1f}% avg, "
               f"{mean(warm_hits):.0f} hits/run avg")
 
         # Return non-zero if speedup is unreasonably small (< 1.5x).

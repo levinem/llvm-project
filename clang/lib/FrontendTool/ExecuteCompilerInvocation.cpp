@@ -13,6 +13,7 @@
 
 #include "clang/Basic/DiagnosticFrontend.h"
 #include "clang/CodeGen/CodeGenAction.h"
+#include "clang/TemplateCache/CompositeCacheBackend.h"
 #include "clang/Config/config.h"
 #include "clang/ExtractAPI/FrontendActions.h"
 #include "clang/Frontend/CompilerInstance.h"
@@ -310,6 +311,20 @@ bool ExecuteCompilerInvocation(CompilerInstance *Clang) {
   // accommodate lenient callers that decided to make progress despite errors.
   if (Clang->getDiagnostics().getNumErrors() != NumErrorsBefore)
     return false;
+
+  // Register the template instantiation cache backend if the cache is enabled.
+  // Uses CompositeCacheBackend (daemon + local) when a daemon URL is provided,
+  // or ASTImporterCacheBackend (local disk only) otherwise.
+  // Must happen after createSema() so the Sema object exists.
+  if (Clang->hasSema()) {
+    if (auto *TIC = Clang->getSema().getTemplateInstantiationCache()) {
+      StringRef DaemonURL =
+          Clang->getHeaderSearchOpts().TemplateInstantiationCacheDaemonURL;
+      registerCompositeCacheBackend(*TIC, Clang->getModuleCache(),
+                                    Clang->getPCHContainerReader(),
+                                    Clang->getCodeGenOpts(), DaemonURL);
+    }
+  }
 
   // Create and execute the frontend action.
   std::unique_ptr<FrontendAction> Act(CreateFrontendAction(*Clang));

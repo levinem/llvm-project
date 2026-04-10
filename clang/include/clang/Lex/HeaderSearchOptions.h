@@ -113,6 +113,10 @@ public:
   /// The directory used for the cross-TU template instantiation cache.
   std::string TemplateInstantiationCachePath;
 
+  /// URL of the template instantiation cache daemon for distributed sharing.
+  /// Empty string means daemon is disabled.
+  std::string TemplateInstantiationCacheDaemonURL;
+
   /// The directory used for a user build.
   std::string ModuleUserBuildPath;
 

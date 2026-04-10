@@ -14,6 +14,7 @@ set(link_libs
   clangExtractAPI
   clangFrontend
   clangRewriteFrontend
+  clangTemplateCache
   )
 
 set(deps)

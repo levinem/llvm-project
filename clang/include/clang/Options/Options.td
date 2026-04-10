@@ -3546,6 +3546,12 @@ def ftemplate_instantiation_cache_stats : Flag<["-"], "ftemplate-instantiation-c
   Flags<[]>, Visibility<[ClangOption, CC1Option]>,
   HelpText<"Print template instantiation cache statistics at end of compilation">,
   MarshallingInfoFlag<FrontendOpts<"ShowTemplateInstantiationCacheStats">>;
+def ftemplate_instantiation_cache_daemon : Joined<["-"], "ftemplate-instantiation-cache-daemon=">,
+  Group<f_Group>,
+  Flags<[]>, Visibility<[ClangOption, CC1Option]>,
+  MetaVarName<"<url>">,
+  HelpText<"URL of the template instantiation cache daemon for distributed cache sharing (e.g., http://localhost:8123)">,
+  MarshallingInfoString<HeaderSearchOpts<"TemplateInstantiationCacheDaemonURL">>;
 def fmodules_user_build_path : Separate<["-"], "fmodules-user-build-path">, Group<i_Group>,
   Flags<[]>, Visibility<[ClangOption, CC1Option]>,
   MetaVarName<"<directory>">,
