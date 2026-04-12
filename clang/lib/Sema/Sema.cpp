@@ -626,13 +626,10 @@ Sema::~Sema() {
   assert(InstantiatingSpecializations.empty() &&
          "failed to clean up an InstantiatingTemplate?");
 
-  // Flush pending cache writes and optionally print statistics.
-  if (TemplateCache) {
+  // Flush pending cache writes. Stats are printed by ExecuteCompilerInvocation
+  // which has access to FrontendOptions::ShowTemplateInstantiationCacheStats.
+  if (TemplateCache)
     TemplateCache->flushPendingWrites();
-    // Stats are printed if explicitly requested or if general stats are on.
-    if (PP.getDiagnostics().getShowStats())
-      TemplateCache->printStats(llvm::errs());
-  }
 
   if (VisContext) FreeVisContext();
 

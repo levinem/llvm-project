@@ -331,6 +331,17 @@ bool ExecuteCompilerInvocation(CompilerInstance *Clang) {
   if (!Act)
     return false;
   bool Success = Clang->ExecuteAction(*Act);
+
+  // Print template instantiation cache statistics if requested.
+  // Done here (not in ~Sema) because FrontendOptions is not accessible from
+  // clangSema without creating a circular dependency.
+  if (Clang->getFrontendOpts().ShowTemplateInstantiationCacheStats) {
+    if (Clang->hasSema()) {
+      if (auto *TIC = Clang->getSema().getTemplateInstantiationCache())
+        TIC->printStats(llvm::errs());
+    }
+  }
+
   if (Clang->getFrontendOpts().DisableFree)
     llvm::BuryPointer(std::move(Act));
   return Success;
