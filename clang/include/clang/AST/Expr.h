@@ -3760,6 +3760,9 @@ protected:
       : Expr(SC, ty, VK, OK_Ordinary), Op(op) {
     CastExprBits.Kind = kind;
     CastExprBits.PartOfExplicitCast = false;
+    CastExprBits.CStyleInterpretation =
+        llvm::to_underlying(CStyleCastInterpretation::Unknown);
+    CastExprBits.CStyleCastsAwayConst = false;
     CastExprBits.BasePathSize = BasePathSize;
     assert((CastExprBits.BasePathSize == BasePathSize) &&
            "BasePathSize overflow!");
@@ -3772,6 +3775,9 @@ protected:
            bool HasFPFeatures)
       : Expr(SC, Empty) {
     CastExprBits.PartOfExplicitCast = false;
+    CastExprBits.CStyleInterpretation =
+        llvm::to_underlying(CStyleCastInterpretation::Unknown);
+    CastExprBits.CStyleCastsAwayConst = false;
     CastExprBits.BasePathSize = BasePathSize;
     CastExprBits.HasFPFeatures = HasFPFeatures;
     assert((CastExprBits.BasePathSize == BasePathSize) &&
@@ -4022,6 +4028,27 @@ public:
   /// getTypeAsWritten - Returns the type that this expression is
   /// casting to, as written in the source code.
   QualType getTypeAsWritten() const { return TInfo->getType(); }
+
+  /// For a C++ C-style or functional cast, returns how the cast was resolved
+  /// according to [expr.cast]p4. Returns CStyleCastInterpretation::Unknown for
+  /// other casts and for casts that were not resolved (e.g. dependent casts).
+  CStyleCastInterpretation getCStyleCastInterpretation() const {
+    return static_cast<CStyleCastInterpretation>(
+        CastExprBits.CStyleInterpretation);
+  }
+
+  /// For a C++ C-style or functional cast, returns true if the cast casts
+  /// away constness, i.e. it is a const_cast or is a static_cast or
+  /// reinterpret_cast followed by a const_cast.
+  bool getCStyleCastCastsAwayConst() const {
+    return CastExprBits.CStyleCastsAwayConst;
+  }
+
+  void setCStyleCastInterpretation(CStyleCastInterpretation Interpretation,
+                                   bool CastsAwayConst) {
+    CastExprBits.CStyleInterpretation = llvm::to_underlying(Interpretation);
+    CastExprBits.CStyleCastsAwayConst = CastsAwayConst;
+  }
 
   static bool classof(const Stmt *T) {
      return T->getStmtClass() >= firstExplicitCastExprConstant &&

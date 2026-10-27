@@ -1242,6 +1242,9 @@ void ASTStmtWriter::VisitImplicitCastExpr(ImplicitCastExpr *E) {
 
 void ASTStmtWriter::VisitExplicitCastExpr(ExplicitCastExpr *E) {
   VisitCastExpr(E);
+  CurrentPackingBits.addBits(
+      llvm::to_underlying(E->getCStyleCastInterpretation()), /*Width=*/2);
+  CurrentPackingBits.addBit(E->getCStyleCastCastsAwayConst());
   Record.AddTypeSourceInfo(E->getTypeInfoAsWritten());
 }
 

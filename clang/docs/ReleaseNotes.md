@@ -159,6 +159,12 @@ features cannot lower the translation-unit ABI level;
 
 ### AST Dumping Potentially Breaking Changes
 
+- The AST dump of a C-style or functional-style cast in C++ now shows how the
+  cast was resolved (`resolved_as_const_cast`, `resolved_as_reinterpret_cast`,
+  or `resolved_as_static_cast` when it also casts away constness) and whether it
+  casts away constness (`casts_away_const`). The JSON dump has the corresponding
+  `resolvedAs` and `castsAwayConst` attributes.
+
 ### Clang Frontend Potentially Breaking Changes
 
 - Templight support has been removed.
@@ -348,6 +354,13 @@ documentation](CIR/index.md) for more information regarding ClangIR's status and
   times.
 
 ### New Compiler Flags
+
+- Experimental support for C++ profiles (P3589) is available behind the
+  `-cc1` option `-fexperimental-cxx-profiles`. It implements the
+  `[[profiles::enforce]]`, `[[profiles::suppress]]`, `[[profiles::require]]`
+  and `[[profiles::exempt]]` attributes, the `-fcxx-profiles=` and
+  `-fcxx-profiles-preview=` options, and the `std::casting` profile. See
+  {doc}`CXXProfiles`.
 
 - New option `-fmodules-validate-directory-dependencies` makes an implicitly
   built module out of date when a header is added to a directory it enumerated,
